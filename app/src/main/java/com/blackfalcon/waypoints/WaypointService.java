@@ -7,7 +7,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
-import androidx.annotation.Nullable;
+
 import androidx.core.app.NotificationCompat;
 
 public class WaypointService extends Service {
@@ -21,9 +21,10 @@ public class WaypointService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         createNotificationChannel();
+        
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Waypoints")
-                .setContentText("App background mein chal rahi hai aur location track kar rahi hai...")
+                .setContentText("App background mein chal rahi hai...")
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setOngoing(true)
                 .build();
@@ -33,7 +34,6 @@ public class WaypointService extends Service {
         return START_STICKY;
     }
 
-    @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return null;
