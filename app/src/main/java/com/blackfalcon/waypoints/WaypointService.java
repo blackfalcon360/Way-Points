@@ -8,8 +8,6 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
 
-import androidx.core.app.NotificationCompat;
-
 public class WaypointService extends Service {
     private static final String CHANNEL_ID = "WaypointServiceChannel";
 
@@ -22,11 +20,17 @@ public class WaypointService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         createNotificationChannel();
         
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        Notification notification = builder
                 .setContentTitle("Waypoints")
                 .setContentText("App background mein chal rahi hai...")
                 .setSmallIcon(R.drawable.ic_launcher)
-                .setOngoing(true)
                 .build();
 
         startForeground(1, notification);
