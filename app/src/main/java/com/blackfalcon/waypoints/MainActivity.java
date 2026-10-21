@@ -1291,7 +1291,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         box.addView(label(t("keep_on")));
         LinearLayout kr = new LinearLayout(this);
-        kr.addView(chip(t("on"), keepOn, new View.OnClickListener() { @Override public void numpy(View v) { } @Override public void onClick(View v) { put("keepOn", true); } }), chipLp());
+       kr.addView(chip(t("on"), keepOn, new View.OnClickListener() { @Override public void onClick(View v) { put("keepOn", true); } }), chipLp());
         kr.addView(chip(t("off"), !keepOn, new View.OnClickListener() { @Override public void onClick(View v) { put("keepOn", false); } }), chipLp());
         box.addView(kr);
 
