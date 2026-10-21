@@ -110,6 +110,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     private int avgSec, avgN;
     private double sumW, sumLat, sumLon, sumAlt, sumAltW;
 
+    // exit confirmation state
+    private boolean doubleBackToExitPressedOnce = false;
+
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
     private String t(String k) { return fmt.t(k); }
 
@@ -142,7 +145,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         rot = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         store = new WaypointStore(new File(getFilesDir(), "waypoints.tsv"));
 
-        fmt.lang = prefs.getInt("lang", Lang.EN);                 // English unless you pick another language
+        fmt.lang = prefs.getInt("lang", Lang.EN);                 
         fmt.imperial = prefs.getBoolean("imperial", false);
         fmt.coordFmt = prefs.getInt("coordFmt", Geo.FMT_DD);
         trueNorth = prefs.getBoolean("trueNorth", true);
@@ -158,6 +161,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         buildUi();
         if (!hasPerm()) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQ_PERM);
+
+        // Background service start karne ke liye taa k Home button se off na ho aur notification panel mein chale
+        Intent serviceIntent = new Intent(this, WaypointService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
     }
 
     @Override
@@ -185,7 +196,22 @@ public class MainActivity extends Activity implements SensorEventListener {
     public void onBackPressed() {
         if (overlay != 0) { closeOverlay(); return; }
         if (tab != 0) { tab = 0; showTab(); return; }
-        super.onBackPressed();
+        
+        // Exit Confirmation (Double tap to exit)
+        if (doubleBackToExitPressedOnce) {
+            super.onBackPressed();
+            return;
+        }
+
+        this.doubleBackToExitPressedOnce = true;
+        toast("App se bahar jaane ke liye dobara Back dabayein");
+
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                doubleBackToExitPressedOnce = false;
+            }
+        }, 2000);
     }
 
     @Override
@@ -214,13 +240,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             Location b = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             Location best = a != null && (b == null || a.getTime() >= b.getTime()) ? a : b;
             if (best != null && !hasFix) onFix(best);
-        } catch (SecurityException | IllegalArgumentException e) { /* the status line explains */ }
+        } catch (SecurityException | IllegalArgumentException e) { }
     }
 
     private void onFix(Location l) {
         boolean gps = LocationManager.GPS_PROVIDER.equals(l.getProvider());
         long now = System.currentTimeMillis();
-        if (!gps && hasFix && now - lastGpsMs < 20000) return;       // the network position is only a fallback
+        if (!gps && hasFix && now - lastGpsMs < 20000) return;       
         if (gps) lastGpsMs = now;
         fLat = l.getLatitude();
         fLon = l.getLongitude();
@@ -249,8 +275,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (ev.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) return;
         SensorManager.getRotationMatrixFromVector(rotMat, ev.values);
         double az;
-        if (Math.abs(rotMat[8]) < 0.7f) az = Math.atan2(-rotMat[2], -rotMat[5]);     // phone held upright: the way the camera points
-        else az = Math.atan2(rotMat[1], rotMat[4]);                                   // phone flat: the way the top edge points
+        if (Math.abs(rotMat[8]) < 0.7f) az = Math.atan2(-rotMat[2], -rotMat[5]);     
+        else az = Math.atan2(rotMat[1], rotMat[4]);                                   
         if (firstSample) { sinAvg = (float) Math.sin(az); cosAvg = (float) Math.cos(az); firstSample = false; }
         else { sinAvg += 0.18f * ((float) Math.sin(az) - sinAvg); cosAvg += 0.18f * ((float) Math.cos(az) - cosAvg); }
         magHeading = (float) ((Math.toDegrees(Math.atan2(sinAvg, cosAvg)) + 360.0) % 360.0);
@@ -260,14 +286,12 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
 
-    /** true-north heading of the top of the phone, or NaN if unknown */
     private double headingTrue() {
         if (rot != null && haveHeading) return (magHeading + declination + 360.0) % 360.0;
         if (hasFix && fSpd > 1.0f) return fBrg;
         return Double.NaN;
     }
 
-    // ------------------------------------------------------------- helpers
     private GradientDrawable box(int fill, int edge, int radius) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(fill);
@@ -322,7 +346,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         return c;
     }
 
-    /** A text box whose typed text is BLACK (on a white box). */
     private EditText input(String hint, String text) {
         EditText e = new EditText(new ContextThemeWrapper(this, android.R.style.Theme_Material_Light));
         e.setSingleLine(true);
@@ -355,7 +378,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         toast(t("copied"));
     }
 
-    // ------------------------------------------------------------- UI shell
     private void buildUi() {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -458,7 +480,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         listGpsTv.setTextColor(c);
     }
 
-    // ------------------------------------------------------------- waypoint list
     private View buildList() {
         ScrollView sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
@@ -535,7 +556,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         List<Waypoint> all = store.all();
         final boolean near = sortMode == 0 && hasFix;
 
-        // sort chips
         sortBox.removeAllViews();
         String[] sk = {"s_near", "s_new", "s_name", "s_cat"};
         for (int i = 0; i < 4; i++) {
@@ -544,7 +564,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 @Override public void onClick(View v) { sortMode = si; prefs.edit().putInt("sort", si).apply(); refreshList(); }
             }), chipLp());
         }
-        // category chips
         catBox.removeAllViews();
         catBox.addView(chip(t("all"), catFilter == -1, new View.OnClickListener() {
             @Override public void onClick(View v) { catFilter = -1; refreshList(); }
@@ -562,7 +581,6 @@ public class MainActivity extends Activity implements SensorEventListener {
             }), chipLp());
         }
 
-        // filter
         String q = searchEt.getText().toString().trim().toLowerCase(Locale.getDefault());
         final List<Waypoint> shown = new ArrayList<>();
         for (Waypoint w : all) {
@@ -628,7 +646,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    // ------------------------------------------------------------- detail
     private void openDetail(final long id) {
         final Waypoint w = store.get(id);
         if (w == null) { closeOverlay(); return; }
@@ -749,7 +766,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    // ------------------------------------------------------------- add / edit
     private void openEdit(Waypoint w) {
         avgActive = false;
         editing = w;
@@ -925,7 +941,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    // ---- averaging
     private void startAverage() {
         if (!hasFix) { toast(t("gps_wait")); return; }
         avgActive = true;
@@ -963,7 +978,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     };
 
-    // ---- project a point
     private void projectDialog() {
         final boolean[] fromHere = {hasFix};
         LinearLayout box = new LinearLayout(this);
@@ -1027,7 +1041,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }).setNegativeButton(t("cancel"), null).show();
     }
 
-    // ------------------------------------------------------------- compass page
     private View buildCompassPage() {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -1075,7 +1088,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         page.addView(extraTv);
         page.addView(noteTv);
         LinearLayout.LayoutParams sp = lp(ViewGroup.LayoutParams.MATCH_PARENT, dp(28), 0);
-        page.addView(new View(this), sp);       // keeps the text clear of the credit in the corner
+        page.addView(new View(this), sp);       
         styleOthersChip();
         return page;
     }
@@ -1123,7 +1136,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }).show();
     }
 
-    /** moves the dial and the arrow with the phone (called many times a second) */
     private void pushCompass() {
         if (compass == null || tab != 1 || overlay != 0) return;
         double ht = headingTrue();
@@ -1160,7 +1172,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         Waypoint tw = targetId >= 0 ? store.get(targetId) : null;
         if (tw == null && targetId >= 0) setTargetNone();
 
-        // notes about the compass itself
         if (rot == null) noteTv.setText(t("no_sensor"));
         else noteTv.setText(haveHeading ? "" : t("calib"));
 
@@ -1195,7 +1206,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         double b = Geo.bearing(fLat, fLon, tw.lat, tw.lon);
         double shownB = trueNorth ? b : (b - declination + 360.0) % 360.0;
 
-        // arrival alert
         int limit = ARRIVAL[Math.max(0, Math.min(4, arrivalIdx))];
         if (limit > 0) {
             if (d <= limit && !arrivedFlag) {
@@ -1204,7 +1214,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 try {
                     Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
                     if (v != null) v.vibrate(new long[]{0, 300, 150, 300, 150, 500}, -1);
-                } catch (Exception e) { /* no vibrator */ }
+                } catch (Exception e) { }
             } else if (d > limit * 1.6 && arrivedFlag) arrivedFlag = false;
         }
 
@@ -1225,7 +1235,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (Double.isNaN(ht)) compass.setTarget(true, 0, Cats.EMOJI[tw.cat], Cats.COLOR[tw.cat], arrivedFlag);
     }
 
-    // ------------------------------------------------------------- settings
     private void put(String k, int v) { prefs.edit().putInt(k, v).apply(); recreate(); }
     private void put(String k, boolean v) { prefs.edit().putBoolean(k, v).apply(); recreate(); }
 
@@ -1282,7 +1291,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         box.addView(label(t("keep_on")));
         LinearLayout kr = new LinearLayout(this);
-        kr.addView(chip(t("on"), keepOn, new View.OnClickListener() { @Override public void onClick(View v) { put("keepOn", true); } }), chipLp());
+        kr.addView(chip(t("on"), keepOn, new View.OnClickListener() { @Override public void numpy(View v) { } @Override public void onClick(View v) { put("keepOn", true); } }), chipLp());
         kr.addView(chip(t("off"), !keepOn, new View.OnClickListener() { @Override public void onClick(View v) { put("keepOn", false); } }), chipLp());
         box.addView(kr);
 
